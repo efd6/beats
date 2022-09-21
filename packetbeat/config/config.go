@@ -28,11 +28,11 @@ import (
 	"github.com/elastic/beats/v7/packetbeat/procs"
 	conf "github.com/elastic/elastic-agent-libs/config"
 	"github.com/elastic/elastic-agent-libs/mapstr"
+	"github.com/elastic/go-ucfg"
 )
 
 type Config struct {
-	Interface       *InterfaceConfig   `config:"interfaces"`
-	Interfaces      []InterfaceConfig  `config:"interfaces"`
+	Interfaces      InterfaceConfigs   `config:"interfaces"`
 	Flows           *Flows             `config:"flows"`
 	Protocols       map[string]*conf.C `config:"protocols"`
 	ProtocolsList   []*conf.C          `config:"protocols"`
@@ -47,13 +47,6 @@ func (c Config) FromStatic(cfg *conf.C) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	iface, err := cfg.Child("interfaces", -1)
-	if err == nil {
-		if !iface.IsArray() {
-			c.Interfaces = []InterfaceConfig{*c.Interface}
-		}
-	}
-	c.Interface = nil
 	counts := make(map[string]int)
 	for i, iface := range c.Interfaces {
 		name := iface.Device
@@ -128,6 +121,61 @@ type InterfaceConfig struct {
 	Dumpfile              string // Dumpfile is the basename of pcap dumpfiles. The file names will have a creation time stamp and .pcap extension appended.
 	OneAtATime            bool
 	Loop                  int
+}
+
+type InterfaceConfigs []InterfaceConfig
+
+var (
+	_ ucfg.Validator   = (*InterfaceConfigs)(nil)
+	_ ucfg.Initializer = (*InterfaceConfigs)(nil)
+	_ ucfg.Unpacker    = (*InterfaceConfigs)(nil)
+)
+
+func (c *InterfaceConfigs) InitDefaults() {
+	fmt.Printf("\tdefault: %#v\n", c)
+}
+
+func (c *InterfaceConfigs) Validate() error {
+	fmt.Printf("\tvalidate: %#v\n", c)
+	return nil
+}
+
+func (c *InterfaceConfigs) Unpack(v any) error {
+	cfg, err := conf.NewConfigFrom(v)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	cfg.Unpack(&m)
+	fmt.Printf("\tunpack: orig:%#v v:%#v\n", c, m)
+	if c != nil && len(*c) != 0 {
+		err = cfg.Merge((*c)[0])
+		if err != nil {
+			return nil
+		}
+	}
+	switch v := v.(type) {
+	case map[string]any:
+		var iface InterfaceConfig
+		err = cfg.Unpack(&iface)
+		if err != nil {
+			return nil
+		}
+		*c = InterfaceConfigs{iface}
+	case []any:
+		var iface []InterfaceConfig
+		err = cfg.Unpack(&iface)
+		if err != nil {
+			return nil
+		}
+		*c = iface
+	case nil:
+		return errors.New("invalid nil value for interface config")
+	default:
+		return fmt.Errorf("invalid type for interface config: %T", v)
+	}
+	fmt.Printf("\tresult: %#v\n", c)
+	return nil
 }
 
 type Flows struct {

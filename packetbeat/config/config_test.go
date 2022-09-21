@@ -19,6 +19,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -451,6 +452,7 @@ protocols:
 func TestFromStatic(t *testing.T) {
 	for _, test := range fromStaticTests {
 		t.Run(test.name, func(t *testing.T) {
+			fmt.Println(test.name)
 			cfg, err := config.NewConfigFrom(test.config)
 			if err != nil {
 				t.Fatalf("failed to construct config.C: %v", err)
@@ -497,7 +499,6 @@ func cliOptions(file string, loop int, topSpeed, step bool, dump string) Config 
 			Dumpfile:   dump,
 		}},
 	}
-	c.Interface = &c.Interfaces[0]
 	return c
 }
 

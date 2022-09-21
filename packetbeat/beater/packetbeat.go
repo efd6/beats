@@ -71,7 +71,6 @@ func initialConfig() config.Config {
 			Dumpfile:   *cmdLineArgs.dumpfile,
 		}},
 	}
-	c.Interface = &c.Interfaces[0]
 	return c
 }
 
