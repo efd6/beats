@@ -1,0 +1,54 @@
+[
+  {
+    "@timestamp": "2023-04-21T12:19:44.7827392Z",
+    "ecs": {
+      "version": "1.12.0"
+    },
+    "event": {
+      "action": "None",
+      "code": "7040",
+      "kind": "event",
+      "module": "security",
+      "provider": "Service Control Manager"
+    },
+    "host": {
+      "name": "testwindows"
+    },
+    "log": {
+      "level": "information"
+    },
+    "message": "The start type of the Background Intelligent Transfer Service service was changed from 自动启动 to 按需启动.",
+    "winlog": {
+      "api": "wineventlog",
+      "channel": "System",
+      "computer_name": "testwindows",
+      "event_data": {
+        "param1": "Background Intelligent Transfer Service",
+        "param2": "自动启动",
+        "param3": "按需启动",
+        "param4": "BITS"
+      },
+      "event_id": "7040",
+      "keywords": [
+        "Classic"
+      ],
+      "opcode": "Info",
+      "process": {
+        "pid": 828,
+        "thread": {
+          "id": 4480
+        }
+      },
+      "provider_guid": "{555908d1-a6d7-4695-8e1e-26931d2012f4}",
+      "provider_name": "Service Control Manager",
+      "record_id": "1121",
+      "task": "None",
+      "user": {
+        "domain": "NT AUTHORITY",
+        "identifier": "S-1-5-18",
+        "name": "SYSTEM",
+        "type": "Well Known Group"
+      }
+    }
+  }
+]
