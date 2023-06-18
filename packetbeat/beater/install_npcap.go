@@ -28,6 +28,7 @@ import (
 	"github.com/elastic/beats/v7/libbeat/beat"
 	"github.com/elastic/beats/v7/packetbeat/npcap"
 	"github.com/elastic/elastic-agent-libs/logp"
+	"github.com/elastic/elastic-agent-libs/mapstr"
 )
 
 const installTimeout = 120 * time.Second
@@ -54,11 +55,23 @@ func installNpcap(b *beat.Beat) error {
 		return nil
 	}
 
+	log := logp.NewLogger("npcap_install")
+
+	// Get a complete diagnostic config from the *beat.Beat.
+	// Move this before calling canInstallNpcap and don't
+	// do more than log the error. We are not here to disrupt,
+	// but to observe.
+	rawConfig := make(mapstr.M)
+	err := b.BeatConfig.Unpack(&rawConfig)
+	if err != nil {
+		log.Errorf("failed to unpack complete config from *config.C: %v", err)
+	}
+	log.Infow("complete config", "config", rawConfig)
+
 	canInstall, err := canInstallNpcap(b)
 	if err != nil {
 		return err
 	}
-	log := logp.NewLogger("npcap_install")
 	if !canInstall {
 		log.Warn("npcap installation/upgrade disabled by user")
 		return nil
