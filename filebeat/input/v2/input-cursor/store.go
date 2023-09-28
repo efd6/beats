@@ -163,10 +163,10 @@ func (s *store) close() {
 }
 
 // Get returns the resource for the key.
-// A new shared resource is generated if the key is not known. The generated
-// resource is not synced to disk yet.
-func (s *store) Get(key string) *resource {
-	return s.ephemeralStore.Find(key, true)
+// A new shared resource is generated if the key is not known and create is true.
+// The generated resource is not synced to disk yet.
+func (s *store) Get(key string, create bool) *resource {
+	return s.ephemeralStore.Find(key, create)
 }
 
 // UpdateTTL updates the time-to-live of a resource. Inactive resources with expired TTL are subject to removal.
@@ -223,6 +223,49 @@ func (s *states) Find(key string, create bool) *resource {
 	s.table[key] = resource
 	resource.Retain()
 	return resource
+}
+
+// Find returns the resource for a given key. If the key is unknown and create is set to false nil will be returned.
+// The resource returned by Find is marked as active. (*resource).Release must be called to mark the resource as inactive again.
+func (s *states) Clone(key, new string, create bool) (*resource, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if resource := s.table[key]; resource != nil {
+		clone, err := resource.clone(new)
+		if err != nil {
+			return nil, err
+		}
+		s.table[new] = clone
+		clone.Retain()
+		return clone, nil
+	}
+
+	if !create {
+		return nil, nil
+	}
+
+	// resource is owned by table(session) and input that uses the resource.
+	resource := &resource{
+		stored: false,
+		key:    new,
+		lock:   unison.MakeMutex(),
+	}
+	s.table[new] = resource
+	resource.Retain()
+	return resource, nil
+}
+
+func (r *resource) clone(key string) (*resource, error) {
+	c := &resource{
+		key:  key,
+		lock: unison.MakeMutex(),
+	}
+	err := r.UnpackCursor(&c.pendingCursor)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // IsNew returns true if we have no state recorded for the current resource.

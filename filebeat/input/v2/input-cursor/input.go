@@ -154,10 +154,28 @@ func (inp *managedInput) runSource(
 	}
 	defer client.Close()
 
-	resourceKey := inp.createSourceID(source)
-	resource, err := inp.manager.lock(ctx, resourceKey)
-	if err != nil {
-		return err
+	var resource *resource
+	switch source := source.(type) {
+	case SourceHijacker:
+		resourceKey := inp.createSourceID(source)
+		resource, err = inp.manager.lock(ctx, resourceKey, false)
+		if err != nil && err != errNoResource {
+			return err
+		}
+		if err == nil {
+			break
+		}
+		oldResourceKey := inp.createSourceID(source.Hijack())
+		resource, err = inp.manager.lockCloned(ctx, oldResourceKey, resourceKey, true)
+		if err != nil {
+			return err
+		}
+	default:
+		resourceKey := inp.createSourceID(source)
+		resource, err = inp.manager.lock(ctx, resourceKey, true)
+		if err != nil {
+			return err
+		}
 	}
 	defer releaseResource(resource)
 

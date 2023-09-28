@@ -32,7 +32,7 @@ func TestPublish(t *testing.T) {
 	t.Run("event with cursor state creates update operation", func(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		cursor := makeCursor(store, store.Get("test::key"))
+		cursor := makeCursor(store, store.Get("test::key", true))
 
 		var actual beat.Event
 		client := &pubtest.FakeClient{
@@ -47,7 +47,7 @@ func TestPublish(t *testing.T) {
 	t.Run("event without cursor creates no update operation", func(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		cursor := makeCursor(store, store.Get("test::key"))
+		cursor := makeCursor(store, store.Get("test::key", true))
 
 		var actual beat.Event
 		client := &pubtest.FakeClient{
@@ -64,7 +64,7 @@ func TestPublish(t *testing.T) {
 
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		cursor := makeCursor(store, store.Get("test::key"))
+		cursor := makeCursor(store, store.Get("test::key", true))
 
 		publisher := cursorPublisher{ctx, &pubtest.FakeClient{}, &cursor}
 		err := publisher.Publish(beat.Event{}, nil)
@@ -76,7 +76,7 @@ func TestOp_Execute(t *testing.T) {
 	t.Run("applying final op marks the key as finished", func(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 
 		// create op and release resource. The 'resource' must still be active
 		op := mustCreateUpdateOp(t, store, res, "test-updated-cursor-state")
@@ -101,7 +101,7 @@ func TestOp_Execute(t *testing.T) {
 
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 
 		// create update operations and release resource. The 'resource' must still be active
 		mustCreateUpdateOp(t, store, res, "test-updated-cursor-state-dropped")
@@ -127,7 +127,7 @@ func TestOp_Execute(t *testing.T) {
 
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 
 		// create update operations and release resource. The 'resource' must still be active
 		op1 := mustCreateUpdateOp(t, store, res, "test-updated-cursor-state-intermediate")

@@ -76,6 +76,11 @@ type Source interface {
 	Name() string
 }
 
+type SourceHijacker interface {
+	Source
+	Hijack() Source
+}
+
 var (
 	errNoSourceConfigured = errors.New("no source has been configured")
 	errNoInputRunner      = errors.New("no input runner available")
@@ -180,11 +185,34 @@ func (cim *InputManager) Create(config *conf.C) (v2.Input, error) {
 	}, nil
 }
 
+var errNoResource = errors.New("no resource")
+
 // Lock locks a key for exclusive access and returns an resource that can be used to modify
 // the cursor state and unlock the key.
-func (cim *InputManager) lock(ctx v2.Context, key string) (*resource, error) {
-	resource := cim.store.Get(key)
+func (cim *InputManager) lock(ctx v2.Context, key string, create bool) (*resource, error) {
+	resource := cim.store.Get(key, create)
+	if !create && resource == nil {
+		return nil, errNoResource
+	}
 	err := lockResource(ctx.Logger, resource, ctx.Cancelation)
+	if err != nil {
+		resource.Release()
+		return nil, err
+	}
+	return resource, nil
+}
+
+// Lock locks a key for exclusive access and returns an resource that can be used to modify
+// the cursor state and unlock the key.
+func (cim *InputManager) lockCloned(ctx v2.Context, key, new string, create bool) (*resource, error) {
+	resource, err := cim.store.ephemeralStore.Clone(key, new, create)
+	if err != nil {
+		return nil, err
+	}
+	if !create && resource == nil {
+		return nil, errNoResource
+	}
+	err = lockResource(ctx.Logger, resource, ctx.Cancelation)
 	if err != nil {
 		resource.Release()
 		return nil, err

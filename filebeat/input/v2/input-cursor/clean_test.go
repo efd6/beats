@@ -117,7 +117,7 @@ func TestGCStore(t *testing.T) {
 		defer store.Release()
 
 		// access resource and check it is not gc'ed
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		gcStore(logp.NewLogger("test"), started, store)
 		checkEqualStoreState(t, initState, backend.snapshot())
 
@@ -144,7 +144,7 @@ func TestGCStore(t *testing.T) {
 		defer store.Release()
 
 		// create pending update operation
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		op, err := createUpdateOp(store, res, "test-state-update")
 		require.NoError(t, err)
 		res.Release()

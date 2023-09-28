@@ -101,7 +101,7 @@ func TestStore_Get(t *testing.T) {
 		}))
 		defer store.Release()
 
-		res := store.Get("test::key0")
+		res := store.Get("test::key0", true)
 		require.NotNil(t, res)
 		defer res.Release()
 
@@ -115,7 +115,7 @@ func TestStore_Get(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		require.NotNil(t, res)
 		defer res.Release()
 
@@ -127,11 +127,11 @@ func TestStore_Get(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		res1 := store.Get("test::key")
+		res1 := store.Get("test::key", true)
 		require.NotNil(t, res1)
 		defer res1.Release()
 
-		res2 := store.Get("test::key")
+		res2 := store.Get("test::key", true)
 		require.NotNil(t, res2)
 		defer res2.Release()
 
@@ -145,7 +145,7 @@ func TestStore_UpdateTTL(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		store.UpdateTTL(res, 60*time.Second)
 
 		want := map[string]state{
@@ -169,7 +169,7 @@ func TestStore_UpdateTTL(t *testing.T) {
 		}))
 		defer store.Release()
 
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		store.UpdateTTL(res, 60*time.Second)
 		want := map[string]state{
 			"test::key": {
@@ -200,7 +200,7 @@ func TestStore_UpdateTTL(t *testing.T) {
 		defer store.Release()
 
 		// create pending update operation
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		op, err := createUpdateOp(store, res, "test-state-update")
 		require.NoError(t, err)
 		defer op.done(1)

@@ -493,7 +493,7 @@ func TestLockResource(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		res := store.Get("test::key")
+		res := store.Get("test::key", true)
 		err := lockResource(logp.NewLogger("test"), res, context.TODO())
 		require.NoError(t, err)
 	})
@@ -504,14 +504,14 @@ func TestLockResource(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		resUsed := store.Get("test::key")
+		resUsed := store.Get("test::key", true)
 		err := lockResource(log, resUsed, context.TODO())
 		require.NoError(t, err)
 
 		// fail to lock resource in use
 		ctx, cancel := context.WithCancel(context.TODO())
 		cancel()
-		resFail := store.Get("test::key")
+		resFail := store.Get("test::key", true)
 		err = lockResource(log, resFail, ctx)
 		require.Error(t, err)
 		resFail.Release()
@@ -527,7 +527,7 @@ func TestLockResource(t *testing.T) {
 		store := testOpenStore(t, "test", createSampleStore(t, nil))
 		defer store.Release()
 
-		resUsed := store.Get("test::key")
+		resUsed := store.Get("test::key", true)
 		err := lockResource(log, resUsed, context.TODO())
 		require.NoError(t, err)
 
@@ -535,7 +535,7 @@ func TestLockResource(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resOther := store.Get("test::key")
+			resOther := store.Get("test::key", true)
 			err := lockResource(log, resOther, context.TODO())
 			if err == nil {
 				releaseResource(resOther)
