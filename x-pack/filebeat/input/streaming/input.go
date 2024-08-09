@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
+	"net/http"
 	"reflect"
 	"time"
 
@@ -95,49 +95,6 @@ func (i input) run(env v2.Context, src *source, cursor map[string]any, pub input
 	defer s.Close()
 
 	return s.FollowStream(ctx)
-}
-
-// getURL initializes the input URL with the help of the url_program.
-func getURL(ctx context.Context, name, src, url string, state map[string]any, redaction *redact, log *logp.Logger, now func() time.Time) (string, error) {
-	if src == "" {
-		return url, nil
-	}
-
-	state["url"] = url
-	// CEL program which is used to prime/initialize the input url
-	url_prg, ast, err := newProgram(ctx, src, root, nil, log)
-	if err != nil {
-		return "", err
-	}
-
-	log.Debugw("cel engine state before url_eval", logp.Namespace("websocket"), "state", redactor{state: state, cfg: redaction})
-	start := now().In(time.UTC)
-	url, err = evalURLWith(ctx, url_prg, ast, state, start)
-	log.Debugw("url_eval result", logp.Namespace(name), "modified_url", url)
-	if err != nil {
-		log.Errorw("failed url evaluation", "error", err)
-		return "", err
-	}
-	return url, nil
-}
-
-func evalURLWith(ctx context.Context, prg cel.Program, ast *cel.Ast, state map[string]interface{}, now time.Time) (string, error) {
-	out, err := evalRefVal(ctx, prg, ast, state, now)
-	if err != nil {
-		return "", fmt.Errorf("failed eval: %w", err)
-	}
-	v, err := out.ConvertToNative(reflect.TypeOf(""))
-	if err != nil {
-		return "", fmt.Errorf("failed type conversion: %w", err)
-	}
-	switch v := v.(type) {
-	case string:
-		_, err = url.Parse(v)
-		return v, err
-	default:
-		// This should never happen.
-		return "", fmt.Errorf("unexpected native conversion type: %T", v)
-	}
 }
 
 // processor is a common CEL program evaluator and event publisher.
@@ -364,8 +321,8 @@ func errorMessage(msg string) map[string]interface{} {
 	return map[string]interface{}{"error": map[string]interface{}{"message": msg}}
 }
 
-func formHeader(cfg config) map[string][]string {
-	header := make(map[string][]string)
+func formHeader(cfg config) http.Header {
+	header := make(http.Header)
 	switch {
 	case cfg.Auth.CustomAuth != nil:
 		header[cfg.Auth.CustomAuth.Header] = []string{cfg.Auth.CustomAuth.Value}

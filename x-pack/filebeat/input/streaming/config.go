@@ -85,7 +85,7 @@ func (c config) Validate() error {
 		patterns = map[string]*regexp.Regexp{".": nil}
 	}
 	if c.Program != "" {
-		_, _, err = newProgram(context.Background(), c.Program, root, patterns, logp.L().Named("input.websocket"))
+		_, _, err = newProgram(context.Background(), c.Program, root, nil, nil, nil, patterns, logp.L().Named("input.websocket"))
 		if err != nil {
 			return fmt.Errorf("failed to check program: %w", err)
 		}

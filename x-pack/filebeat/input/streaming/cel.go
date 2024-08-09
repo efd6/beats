@@ -9,10 +9,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
+	"golang.org/x/time/rate"
 
 	"github.com/elastic/beats/v7/libbeat/version"
 	"github.com/elastic/elastic-agent-libs/logp"
@@ -51,7 +53,7 @@ func regexpsFromConfig(cfg config) (map[string]*regexp.Regexp, error) {
 // The Filebeat user-agent is provided to the program as useragent.
 var userAgent = useragent.UserAgent("Filebeat", version.GetDefaultVersion(), version.Commit(), version.BuildTime().String())
 
-func newProgram(ctx context.Context, src, root string, patterns map[string]*regexp.Regexp, log *logp.Logger) (cel.Program, *cel.Ast, error) {
+func newProgram(ctx context.Context, src, root string, client *http.Client, limiter *rate.Limiter, auth *lib.BasicAuth, patterns map[string]*regexp.Regexp, log *logp.Logger) (cel.Program, *cel.Ast, error) {
 	opts := []cel.EnvOption{
 		cel.Declarations(decls.NewVar(root, decls.Dyn)),
 		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
@@ -66,6 +68,9 @@ func newProgram(ctx context.Context, src, root string, patterns map[string]*rege
 		lib.Globals(map[string]interface{}{
 			"useragent": userAgent,
 		}),
+	}
+	if client != nil {
+		opts = append(opts, lib.HTTPWithContext(ctx, client, limiter, auth))
 	}
 	if len(patterns) != 0 {
 		opts = append(opts, lib.Regexp(patterns))

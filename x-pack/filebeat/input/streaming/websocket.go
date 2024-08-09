@@ -7,9 +7,13 @@ package streaming
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"net/url"
+	"reflect"
 	"time"
 
+	"github.com/google/cel-go/cel"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap/zapcore"
 
@@ -53,7 +57,7 @@ func NewWebsocketFollower(ctx context.Context, id string, cfg config, cursor map
 		return nil, err
 	}
 
-	s.prg, s.ast, err = newProgram(ctx, cfg.Program, root, patterns, log)
+	s.prg, s.ast, err = newProgram(ctx, cfg.Program, root, nil, nil, nil, patterns, log)
 	if err != nil {
 		s.metrics.errorsTotal.Inc()
 		s.Close()
@@ -75,7 +79,7 @@ func (s *websocketStream) FollowStream(ctx context.Context) error {
 	}
 
 	// initialize the input url with the help of the url_program.
-	url, err := getURL(ctx, "websocket", s.cfg.URLProgram, s.cfg.URL.String(), state, s.cfg.Redact, s.log, s.now)
+	url, err := getURL(ctx, s.cfg.URLProgram, s.cfg.URL.String(), state, s.cfg.Redact, s.log, s.now)
 	if err != nil {
 		s.metrics.errorsTotal.Inc()
 		return err
@@ -123,6 +127,49 @@ func (s *websocketStream) FollowStream(ctx context.Context) error {
 			s.log.Errorw("failed to process and publish data", "error", err)
 			return err
 		}
+	}
+}
+
+// getURL initializes the input URL with the help of the url_program.
+func getURL(ctx context.Context, src, url string, state map[string]any, redaction *redact, log *logp.Logger, now func() time.Time) (string, error) {
+	if src == "" {
+		return url, nil
+	}
+
+	state["url"] = url
+	// CEL program which is used to prime/initialize the input url
+	url_prg, ast, err := newProgram(ctx, src, root, nil, nil, nil, nil, log)
+	if err != nil {
+		return "", err
+	}
+
+	log.Debugw("cel engine state before url_eval", logp.Namespace("websocket"), "state", redactor{state: state, cfg: redaction})
+	start := now().In(time.UTC)
+	url, err = evalURLWith(ctx, url_prg, ast, state, start)
+	log.Debugw("url_eval result", logp.Namespace("websocket"), "modified_url", url)
+	if err != nil {
+		log.Errorw("failed url evaluation", "error", err)
+		return "", err
+	}
+	return url, nil
+}
+
+func evalURLWith(ctx context.Context, prg cel.Program, ast *cel.Ast, state map[string]interface{}, now time.Time) (string, error) {
+	out, err := evalRefVal(ctx, prg, ast, state, now)
+	if err != nil {
+		return "", fmt.Errorf("failed eval: %w", err)
+	}
+	v, err := out.ConvertToNative(reflect.TypeOf(""))
+	if err != nil {
+		return "", fmt.Errorf("failed type conversion: %w", err)
+	}
+	switch v := v.(type) {
+	case string:
+		_, err = url.Parse(v)
+		return v, err
+	default:
+		// This should never happen.
+		return "", fmt.Errorf("unexpected native conversion type: %T", v)
 	}
 }
 
