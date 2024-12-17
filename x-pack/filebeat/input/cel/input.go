@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1290,9 +1291,9 @@ type redactor struct {
 
 // String renders the JSON corresponding to r.state after applying redaction
 // operations.
-func (r redactor) String() string {
+func (r redactor) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if r.cfg == nil || len(r.cfg.Fields) == 0 {
-		return r.state.String()
+		return mapstrM(r.state).MarshalLogObject(enc)
 	}
 	c := make(mapstr.M, len(r.state))
 	cloneMap(c, r.state)
@@ -1307,7 +1308,48 @@ func (r redactor) String() string {
 			parent[key] = "*"
 		})
 	}
-	return c.String()
+	return mapstrM(c).MarshalLogObject(enc)
+}
+
+// mapstrM is a non-mutating version of mapstr.M.
+// See https://github.com/elastic/elastic-agent-libs/issues/232.
+type mapstrM mapstr.M
+
+// MarshalLogObject implements the zapcore.ObjectMarshaler interface and allows
+// for more efficient marshaling of mapstrM in structured logging.
+func (m mapstrM) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if len(m) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := m[k]
+		if inner, ok := tryToMapStr(v); ok {
+			err := enc.AddObject(k, inner)
+			if err != nil {
+				return fmt.Errorf("failed to add object: %w", err)
+			}
+			continue
+		}
+		zap.Any(k, v).AddTo(enc)
+	}
+	return nil
+}
+
+func tryToMapStr(v interface{}) (mapstrM, bool) {
+	switch m := v.(type) {
+	case mapstrM:
+		return m, true
+	case map[string]interface{}:
+		return mapstrM(m), true
+	default:
+		return nil, false
+	}
 }
 
 // cloneMap is an enhanced version of mapstr.M.Clone that handles cloning arrays

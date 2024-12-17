@@ -17,12 +17,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/icholy/digest"
+	"go.uber.org/zap/zapcore"
 
 	v2 "github.com/elastic/beats/v7/filebeat/input/v2"
 	inputcursor "github.com/elastic/beats/v7/filebeat/input/v2/input-cursor"
@@ -2292,8 +2294,8 @@ var redactorTests = []struct {
 			"other": "data",
 		},
 		cfg:        nil,
-		wantOrig:   `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
-		wantRedact: `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
+		wantOrig:   `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
+		wantRedact: `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
 	},
 	{
 		name: "auth_no_delete",
@@ -2308,8 +2310,8 @@ var redactorTests = []struct {
 			Fields: []string{"auth"},
 			Delete: false,
 		},
-		wantOrig:   `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
-		wantRedact: `{"auth":"*","other":"data"}`,
+		wantOrig:   `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
+		wantRedact: `{"state":{"auth":"*","other":"data"}}`,
 	},
 	{
 		name: "auth_delete",
@@ -2324,8 +2326,8 @@ var redactorTests = []struct {
 			Fields: []string{"auth"},
 			Delete: true,
 		},
-		wantOrig:   `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
-		wantRedact: `{"other":"data"}`,
+		wantOrig:   `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
+		wantRedact: `{"state":{"other":"data"}}`,
 	},
 	{
 		name: "pass_no_delete",
@@ -2340,8 +2342,8 @@ var redactorTests = []struct {
 			Fields: []string{"auth.pass"},
 			Delete: false,
 		},
-		wantOrig:   `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
-		wantRedact: `{"auth":{"pass":"*","user":"fred"},"other":"data"}`,
+		wantOrig:   `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
+		wantRedact: `{"state":{"auth":{"pass":"*","user":"fred"},"other":"data"}}`,
 	},
 	{
 		name: "pass_delete",
@@ -2356,8 +2358,8 @@ var redactorTests = []struct {
 			Fields: []string{"auth.pass"},
 			Delete: true,
 		},
-		wantOrig:   `{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}`,
-		wantRedact: `{"auth":{"user":"fred"},"other":"data"}`,
+		wantOrig:   `{"state":{"auth":{"pass":"top_secret","user":"fred"},"other":"data"}}`,
+		wantRedact: `{"state":{"auth":{"user":"fred"},"other":"data"}}`,
 	},
 	{
 		name: "multi_cursor_no_delete",
@@ -2372,8 +2374,8 @@ var redactorTests = []struct {
 			Fields: []string{"cursor.key"},
 			Delete: false,
 		},
-		wantOrig:   `{"cursor":[{"key":"val_one","other":"data"},{"key":"val_two","other":"data"}],"other":"data"}`,
-		wantRedact: `{"cursor":[{"key":"*","other":"data"},{"key":"*","other":"data"}],"other":"data"}`,
+		wantOrig:   `{"state":{"cursor":[{"key":"val_one","other":"data"},{"key":"val_two","other":"data"}],"other":"data"}}`,
+		wantRedact: `{"state":{"cursor":[{"key":"*","other":"data"},{"key":"*","other":"data"}],"other":"data"}}`,
 	},
 	{
 		name: "multi_cursor_delete",
@@ -2388,22 +2390,39 @@ var redactorTests = []struct {
 			Fields: []string{"cursor.key"},
 			Delete: true,
 		},
-		wantOrig:   `{"cursor":[{"key":"val_one","other":"data"},{"key":"val_two","other":"data"}],"other":"data"}`,
-		wantRedact: `{"cursor":[{"other":"data"},{"other":"data"}],"other":"data"}`,
+		wantOrig:   `{"state":{"cursor":[{"key":"val_one","other":"data"},{"key":"val_two","other":"data"}],"other":"data"}}`,
+		wantRedact: `{"state":{"cursor":[{"other":"data"},{"other":"data"}],"other":"data"}}`,
 	},
 }
 
 func TestRedactor(t *testing.T) {
 	for _, test := range redactorTests {
 		t.Run(test.name, func(t *testing.T) {
-			got := fmt.Sprint(redactor{state: test.state, cfg: test.cfg})
-			orig := fmt.Sprint(test.state)
+			got, err := zapEncode("state", redactor{state: test.state, cfg: test.cfg})
+			if err != nil {
+				t.Fatalf("failed to encode redactor state: %v", err)
+			}
+			orig, err := zapEncode("state", mapstrM(test.state))
+			if err != nil {
+				t.Fatalf("failed to encode orig state: %v", err)
+			}
 			if orig != test.wantOrig {
-				t.Errorf("unexpected original state after redaction:\n--- got\n--- want\n%s", cmp.Diff(orig, test.wantOrig))
+				t.Errorf("unexpected original state after redaction:\n--- want\n+++ got\n%s", cmp.Diff(test.wantOrig, orig))
 			}
 			if got != test.wantRedact {
-				t.Errorf("unexpected redaction:\n--- got\n--- want\n%s", cmp.Diff(got, test.wantRedact))
+				t.Errorf("unexpected redaction:\n--- want\n+++ got\n%s", cmp.Diff(test.wantRedact, got))
 			}
 		})
 	}
+}
+
+func zapEncode(key string, val zapcore.ObjectMarshaler) (string, error) {
+	enc := zapcore.NewJSONEncoder(zapcore.EncoderConfig{})
+	enc.AddObject(key, val)
+	buf, err := enc.EncodeEntry(zapcore.Entry{Message: "test", Level: zapcore.DebugLevel}, nil)
+	if err != nil {
+		return "", err
+	}
+	defer buf.Free()
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
