@@ -1,18 +1,18 @@
 package dpop
 
 import (
-    "context"
-    "crypto/ecdsa"
-    "crypto/rand"
-    "crypto/rsa"
-    "encoding/base64"
-    "encoding/json"
-    "errors"
-    "net/http"
-    "strings"
-    "time"
+	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
 
-    "golang.org/x/oauth2"
+	"golang.org/x/oauth2"
 )
 
 // ProofOptions holds optional values like nonce and access token hash (ath).
@@ -44,6 +44,9 @@ func NewProofGenerator(privateKey interface{}) (*ProofGenerator, error) {
 }
 
 // BuildProof produces a compact JWS string containing the DPoP proof for the given HTTP method and URL.
+// BuildProof constructs a signed DPoP proof JWT for the given HTTP method and
+// URL. The URL fragment, if present, is stripped per RFC. Optional fields like
+// nonce and access token hash (ath) are included when provided via opts.
 func (g *ProofGenerator) BuildProof(ctx context.Context, method, url string, opts ProofOptions) (string, error) {
 	if g == nil || g.privateKey == nil {
 		return "", errors.New("nil proof generator or key")
@@ -77,12 +80,15 @@ func (g *ProofGenerator) BuildProof(ctx context.Context, method, url string, opt
 	return signJWS(g.privateKey, header, claims)
 }
 
+// randomJTI returns a URL-safe, random identifier for the "jti" claim.
 func randomJTI() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
+// signJWS produces a compact JWS string by signing the given header and claims
+// with the provided private key, using the algorithm implied by the key type.
 func signJWS(privateKey interface{}, header, claims map[string]interface{}) (string, error) {
 	hb, err := json.Marshal(header)
 	if err != nil {
@@ -103,6 +109,8 @@ func signJWS(privateKey interface{}, header, claims map[string]interface{}) (str
 	return unsigned + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
+// signDetached signs the given data using the appropriate algorithm for
+// the provided key and returns the raw signature bytes.
 func signDetached(privateKey interface{}, data string) ([]byte, error) {
 	switch k := privateKey.(type) {
 	case *ecdsa.PrivateKey:
@@ -117,6 +125,9 @@ func signDetached(privateKey interface{}, data string) ([]byte, error) {
 // Transport decorates an underlying RoundTripper to add DPoP proofs and bearer auth.
 // It uses the provided TokenSource for access tokens and adds both Authorization and DPoP headers.
 
+// Transport is an http.RoundTripper that adds DPoP proofs and Authorization
+// headers (Authorization: DPoP <access_token>) to outgoing requests using the
+// provided oauth2.TokenSource. It retries once on a DPoP-Nonce challenge.
 type Transport struct {
 	Base        http.RoundTripper
 	TokenSource oauth2.TokenSource

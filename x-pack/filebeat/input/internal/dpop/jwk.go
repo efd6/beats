@@ -9,14 +9,16 @@ import (
 	"math/big"
 )
 
-// jwkPublic represents a minimal JSON Web Key (public part) used in DPoP headers.
-// We only include the required members per RFCs for thumbprint stability.
-// Use map[string]interface{} when attaching to JOSE header.
+// Helpers to construct minimal public JWKs for DPoP proofs.
+// Only the required members are included to keep thumbprints stable.
 
+// keyAlgorithm enumerates JOSE alg header values we support for DPoP.
 type keyAlgorithm string
 
 const (
+	// algES256 is the JOSE alg header for ECDSA P-256/SHA-256.
 	algES256 keyAlgorithm = "ES256"
+	// algRS256 is the JOSE alg header for RSASSA-PKCS1-v1_5 with SHA-256.
 	algRS256 keyAlgorithm = "RS256"
 )
 
@@ -35,6 +37,8 @@ func buildJWKAndAlg(privateKey interface{}) (map[string]interface{}, keyAlgorith
 	}
 }
 
+// ecPublicJWK converts an ECDSA P-256 public key into a minimal public JWK
+// and selects ES256 as the signing algorithm.
 func ecPublicJWK(pub *ecdsa.PublicKey) (map[string]interface{}, keyAlgorithm, error) {
 	if pub == nil {
 		return nil, "", errors.New("nil ECDSA public key")
@@ -58,6 +62,8 @@ func ecPublicJWK(pub *ecdsa.PublicKey) (map[string]interface{}, keyAlgorithm, er
 	return jwk, algES256, nil
 }
 
+// rsaPublicJWK converts an RSA public key into a minimal public JWK and
+// selects RS256 as the signing algorithm.
 func rsaPublicJWK(pub *rsa.PublicKey) (map[string]interface{}, keyAlgorithm, error) {
 	if pub == nil {
 		return nil, "", errors.New("nil RSA public key")
@@ -72,6 +78,8 @@ func rsaPublicJWK(pub *rsa.PublicKey) (map[string]interface{}, keyAlgorithm, err
 	return jwk, algRS256, nil
 }
 
+// leftPadToSize returns a slice of length size, left-padding b with zeros
+// if necessary. If len(b) >= size, b is returned unchanged.
 func leftPadToSize(b []byte, size int) []byte {
 	if len(b) >= size {
 		return b

@@ -1,15 +1,15 @@
 package dpop
 
 import (
-    "context"
-    "crypto/ecdsa"
-    "crypto/elliptic"
-    "crypto/rand"
-    "crypto/rsa"
-    "errors"
-    "net/http"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"errors"
+	"net/http"
 
-    "golang.org/x/oauth2"
+	"golang.org/x/oauth2"
 )
 
 // NewTokenClient builds an *http.Client to be used by oauth2.Config or clientcredentials.Config

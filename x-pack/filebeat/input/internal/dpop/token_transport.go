@@ -14,6 +14,8 @@ type TokenTransport struct {
 	ProofGen *ProofGenerator
 }
 
+// RoundTrip implements http.RoundTripper, injecting a DPoP proof into token
+// endpoint requests and handling one retry on a nonce challenge.
 func (t *TokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.Base
 	if base == nil {
