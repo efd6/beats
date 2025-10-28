@@ -1,4 +1,4 @@
-package dpopoauth2
+package dpop
 
 import (
     "context"
