@@ -192,7 +192,10 @@ require (
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.57
 )
 
-require github.com/shirou/gopsutil/v3 v3.21.12
+require (
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/shirou/gopsutil/v3 v3.21.12
+)
 
 require (
 	cloud.google.com/go v0.97.0 // indirect

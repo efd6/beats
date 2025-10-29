@@ -1,14 +1,8 @@
 package dpop
 
 import (
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
-	"errors"
+    "crypto/sha256"
+    "encoding/base64"
 )
 
 // Helpers to hash and sign DPoP proof inputs.
@@ -28,25 +22,4 @@ func base64RawURLEncode(b []byte) string {
 
 // signECDSA creates an ES256 signature over data (with SHA-256) and returns
 // the raw (r || s) concatenation, as required by JOSE for ES256.
-func signECDSA(priv *ecdsa.PrivateKey, data []byte) ([]byte, error) {
-	h := sha256.Sum256(data)
-	r, s, err := ecdsa.Sign(rand.Reader, priv, h[:])
-	if err != nil {
-		return nil, err
-	}
-	// DPoP ES256 requires the raw concatenation of r and s (not DER)
-	curveBits := priv.Curve.Params().BitSize
-	if priv.Curve != elliptic.P256() {
-		return nil, errors.New("unsupported ECDSA curve for ES256")
-	}
-	octLen := (curveBits + 7) / 8
-	rb := leftPadToSize(r.Bytes(), octLen)
-	sb := leftPadToSize(s.Bytes(), octLen)
-	return append(rb, sb...), nil
-}
-
-// signRSA creates an RS256 signature over data (with SHA-256) per PKCS#1 v1.5.
-func signRSA(priv *rsa.PrivateKey, data []byte) ([]byte, error) {
-	h := sha256.Sum256(data)
-	return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, h[:])
-}
+// Signing is delegated to the jwt/v5 library in proof.go
