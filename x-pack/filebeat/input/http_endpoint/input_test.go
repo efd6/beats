@@ -432,7 +432,7 @@ func TestServerPool(t *testing.T) {
 				pub   publisher
 				fails = make(chan error, 1)
 			)
-			ctx, cancel := newCtx("server_pool_test", test.name)
+			ctx, cancel := newCtx(t, "server_pool_test", test.name)
 			metrics := newInputMetrics(monitoring.NewRegistry(), logp.NewNopLogger())
 			var wg sync.WaitGroup
 			for _, cfg := range test.cfgs {
@@ -491,7 +491,7 @@ func TestServerPool(t *testing.T) {
 			}
 
 			// Try to re-register the same addresses.
-			ctx, cancel = newCtx("server_pool_test", test.name)
+			ctx, cancel = newCtx(t, "server_pool_test", test.name)
 			for _, cfg := range test.cfgs {
 				cfg := cfg
 				wg.Add(1)
@@ -545,10 +545,10 @@ func (e invalidTLSStateErr) Is(err error) bool {
 	return false
 }
 
-func newCtx(log, id string) (_ v2.Context, cancel func()) {
+func newCtx(t *testing.T, log, id string) (_ v2.Context, cancel func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return v2.Context{
-		Logger:      logp.NewLogger(log),
+		Logger:      logptest.NewTestingLogger(t, log),
 		ID:          id,
 		Cancelation: ctx,
 	}, cancel

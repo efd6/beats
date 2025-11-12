@@ -14,12 +14,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -157,9 +159,15 @@ type pool struct {
 // cancelled or the context of another end-point sharing the same address
 // has had its context cancelled. If an end-point is re-registered with
 // the same address and mux pattern, serve will return an error.
-func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metrics *inputMetrics) error {
+func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metrics *inputMetrics) (err error) {
 	log := ctx.Logger.With("address", e.addr)
 	pattern := e.config.URL
+	log.Infow("configuration", "cfg", e.config, "is_package_server_pool", p == &servers) // In testing, is_package_server_pool is false, otherwise true.
+	defer func() {
+		if err != nil {
+			log.Infow("serve error", "error", err)
+		}
+	}()
 
 	u, err := url.Parse(pattern)
 	if err != nil {
@@ -171,6 +179,7 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 
 	var prg *program
 	if e.config.Program != "" {
+		log.Infow("compiling program")
 		prg, err = newProgram(e.config.Program, log)
 		if err != nil {
 			ctx.UpdateStatus(status.Failed, "unable to compile CEL program: "+err.Error())
@@ -178,12 +187,15 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 		}
 	}
 
+	log.Infow("gaining pool lock for new endpoint")
 	p.mu.Lock()
+	log.Infow("checking server pool", "addr", e.addr, "pool", slices.Sorted(maps.Keys(p.servers)))
 	s, ok := p.servers[e.addr]
 	if ok {
 		err = checkTLSConsistency(e.addr, s.tls, e.config.TLS)
 		if err != nil {
 			p.mu.Unlock()
+			log.Infow("releasing pool lock for invalid transport")
 			ctx.UpdateStatus(status.Failed, err.Error())
 			return err
 		}
@@ -194,6 +206,7 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 			s.setErr(err)
 			s.cancel()
 			p.mu.Unlock()
+			log.Infow("releasing pool lock for invalid existing pattern")
 			ctx.UpdateStatus(status.Failed, err.Error())
 			return err
 		}
@@ -201,10 +214,13 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 		s.mux.Handle(pattern, newHandler(s.ctx, e.config, prg, pub, ctx.StatusReporter, log, metrics))
 		s.idOf[pattern] = ctx.ID
 		p.mu.Unlock()
+		log.Infow("releasing pool lock for new endpoint addition")
 		<-s.ctx.Done()
+		log.Infow("context done")
 		return s.getErr()
 	}
 
+	log.Infow("new mux")
 	mux := http.NewServeMux()
 	srv := &http.Server{Addr: e.addr, TLSConfig: e.tlsConfig, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	s = &server{
@@ -216,7 +232,9 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 	s.ctx, s.cancel = ctxtool.WithFunc(ctx.Cancelation, func() { srv.Close() })
 	mux.Handle(pattern, newHandler(s.ctx, e.config, prg, pub, ctx.StatusReporter, log, metrics))
 	p.servers[e.addr] = s
+	log.Infow("new server pool state after addition", "addr", e.addr, "pool", slices.Sorted(maps.Keys(p.servers)))
 	p.mu.Unlock()
+	log.Infow("releasing pool lock for new server creation")
 
 	ctx.UpdateStatus(status.Running, "")
 	if e.tlsConfig != nil {
@@ -236,9 +254,15 @@ func (p *pool) serve(ctx v2.Context, e *httpEndpoint, pub func(beat.Event), metr
 	default:
 		ctx.UpdateStatus(status.Failed, "server exited unexpectedly: "+err.Error())
 	}
+
+	// I think the race may be here.
+
+	log.Infow("gaining pool lock for deletion")
 	p.mu.Lock()
 	delete(p.servers, e.addr)
+	log.Infow("new server pool state after deletion", "addr", e.addr, "pool", slices.Sorted(maps.Keys(p.servers)))
 	p.mu.Unlock()
+	log.Infow("releasing pool lock for deletion")
 	s.setErr(err)
 	s.cancel()
 	return err
