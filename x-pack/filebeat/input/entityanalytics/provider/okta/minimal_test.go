@@ -201,3 +201,44 @@ func TestMinimalConfigRequestDefaults(t *testing.T) {
 		t.Errorf("tracer = %+v; want nil", mc.tracer)
 	}
 }
+
+func TestMinimalProviderSecrets(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  map[string]any
+		want []string
+	}{
+		{
+			name: "token",
+			cfg: map[string]any{ //nolint:gosec // fake credential in a test
+				"okta_domain": "test.okta.com",
+				"okta_token":  "fake-okta-token-1234",
+			},
+			want: []string{"fake-okta-token-1234"},
+		},
+		{
+			name: "oauth2",
+			cfg: map[string]any{ //nolint:gosec // fake credential in a test
+				"okta_domain":          "test.okta.com",
+				"oauth2.enabled":       true,
+				"oauth2.client.id":     "client-id",
+				"oauth2.client.secret": "fake-client-secret-1234",
+				"oauth2.token_url":     "https://test.okta.com/oauth2/v1/token",
+				"oauth2.scopes":        []string{"okta.users.read"},
+			},
+			// The token is empty when OAuth2 is used.
+			want: []string{"", "fake-client-secret-1234"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ms, err := minimalProvider(config.MustNewConfigFrom(test.cfg), logptest.NewTestingLogger(t, ""))
+			if err != nil {
+				t.Fatalf("unexpected error from minimalProvider: %v", err)
+			}
+			if !reflect.DeepEqual(ms.Secrets, test.want) {
+				t.Errorf("Secrets = %q; want %q", ms.Secrets, test.want)
+			}
+		})
+	}
+}

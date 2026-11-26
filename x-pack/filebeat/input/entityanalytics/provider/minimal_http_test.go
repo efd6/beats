@@ -462,3 +462,46 @@ func TestTraceRequests(t *testing.T) {
 		}
 	})
 }
+
+func TestTraceRequestsMasksSecrets(t *testing.T) {
+	const secret = "fake-secret-value-1234"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"note":"unknown value ` + secret + `"}`))
+	}))
+	defer srv.Close()
+
+	logs := filepath.Join(t.TempDir(), "logs")
+	p := &paths.Path{Logs: logs}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cfg := &TracerConfig{}
+	cfg.Filename = "../../logs/okta/http-request-trace-*.ndjson"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	rt, err := TraceRequests(ctx, http.DefaultTransport, cfg, p, "okta", "input-1", logptest.NewTestingLogger(t, ""), secret)
+	if err != nil {
+		t.Fatalf("TraceRequests: %v", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := (&http.Client{Transport: rt}).Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+
+	b, err := os.ReadFile(filepath.Join(logs, "okta", "http-request-trace-input-1.ndjson"))
+	if err != nil {
+		t.Fatalf("reading trace: %v", err)
+	}
+	if strings.Contains(string(b), secret) {
+		t.Errorf("trace must not contain the secret:\n%s", b)
+	}
+	if !strings.Contains(string(b), "REDACTED") {
+		t.Errorf("trace must contain the masked form:\n%s", b)
+	}
+}

@@ -819,6 +819,30 @@ var testCases = []struct {
 		expectedTraceContain:    []string{"X-Gateway", "REDACTED"},
 	},
 	{
+		name: "trace_secret_value_in_body",
+		setupServer: func(t testing.TB, h http.HandlerFunc, config map[string]any) {
+			server := httptest.NewServer(h)
+			config["request.url"] = server.URL
+			t.Cleanup(server.Close)
+		},
+		baseConfig: map[string]any{ //nolint:gosec // fake credential in a test
+			"interval":                1,
+			"request.method":          http.MethodGet,
+			"auth.basic.user":         "test_user",
+			"auth.basic.password":     "a_long_basic_password",
+			"request.tracer.enabled":  true,
+			"request.tracer.filename": "httpjson/logs/http-request-trace-*.ndjson",
+		},
+		handler: func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"echo":"a_long_basic_password","other":"visible"}`))
+		},
+		expected:                []string{`{"echo":"a_long_basic_password","other":"visible"}`},
+		expectedFile:            filepath.Join("httpjson", "logs", "http-request-trace-httpjson-foo-eb837d4c-5ced-45ed-b05c-de658135e248_https_somesource_someapi.ndjson"),
+		expectedTraceNotContain: []string{"a_long_basic_password"},
+		expectedTraceContain:    []string{"visible", "REDACTED"},
+	},
+	{
 		name: "request_transforms_can_access_state_from_previous_transforms",
 		setupServer: func(t testing.TB, h http.HandlerFunc, config map[string]any) {
 			server := httptest.NewServer(h)

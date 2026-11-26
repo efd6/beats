@@ -985,6 +985,9 @@ timeout: 30s
 
 	t.Run("okta", func(t *testing.T) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Echo the token in a header that no name list knows, so
+			// that only masking by value hides it.
+			w.Header().Set("X-Echo", "SUPER-SECRET-TOKEN")
 			_, _ = w.Write([]byte("[]"))
 		}))
 		defer srv.Close()

@@ -2535,6 +2535,79 @@ var inputTests = []struct {
 		wantTraceNotContain: []string{"a_client_secret", "Bearer abcd"},
 		wantTraceContain:    []string{"REDACTED"},
 	},
+	{
+		name: "trace_secret_value_in_body",
+		server: func(t *testing.T, h http.HandlerFunc, config map[string]any) {
+			s := httptest.NewServer(h)
+			config["resource.url"] = s.URL
+			t.Cleanup(s.Close)
+		},
+		config: map[string]any{ //nolint:gosec // fake credential in a test
+			"interval":                 1,
+			"auth.basic.user":          "test_client",
+			"auth.basic.password":      "a_long_basic_password",
+			"resource.tracer.enabled":  true,
+			"resource.tracer.filename": "cel/logs/http-request-trace-*.ndjson",
+			"program": `
+	get(state.url).Body.as(body, {
+		"events": [body.decode_json()]
+	})
+	`,
+		},
+		handler: func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"echo":"a_long_basic_password","other":"visible"}`))
+		},
+		want: []map[string]any{
+			{"echo": "a_long_basic_password", "other": "visible"},
+		},
+		wantFile:            filepath.Join("cel", "logs", "http-request-trace-test_id_trace_secret_value_in_body.ndjson"),
+		wantTraceNotContain: []string{"a_long_basic_password"},
+		wantTraceContain:    []string{"visible", "REDACTED"},
+	},
+
+	{
+		name: "trace_secret_in_state",
+		server: func(t *testing.T, h http.HandlerFunc, config map[string]any) {
+			s := httptest.NewServer(h)
+			config["resource.url"] = s.URL
+			t.Cleanup(s.Close)
+		},
+		config: map[string]any{
+			"interval":                 1,
+			"state":                    map[string]any{"auth_token": "a_long_state_token_value"},
+			"redact.fields":            []string{"auth_token"},
+			"resource.tracer.enabled":  true,
+			"resource.tracer.filename": "cel/logs/http-request-trace-*.ndjson",
+			"program": `
+	get_request(state.url).with({
+		"Header": {
+			"SEC": [state.auth_token]
+		}
+	}).do_request().Body.as(body, {
+		"events": [body.decode_json()]
+	})
+	`,
+		},
+		handler: func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("SEC") != "a_long_state_token_value" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			defaultHandler(http.MethodGet, "")(w, r)
+		},
+		want: []map[string]any{
+			{
+				"hello": []any{
+					map[string]any{"world": "moon"},
+					map[string]any{"space": []any{map[string]any{"cake": "pumpkin"}}},
+				},
+			},
+		},
+		wantFile:            filepath.Join("cel", "logs", "http-request-trace-test_id_trace_secret_in_state.ndjson"),
+		wantTraceNotContain: []string{"a_long_state_token_value"},
+		wantTraceContain:    []string{"SEC", "REDACTED"},
+	},
 
 	// Multi-step requests.
 	{

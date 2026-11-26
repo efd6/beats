@@ -99,6 +99,7 @@ func (m *manager) createMinimalStateInput(cfg *config.C, c *conf) (v2.Input, err
 		client:           ms.Client,
 		tracer:           ms.Tracer,
 		untraced:         ms.Untraced,
+		secrets:          ms.Secrets,
 		logger:           m.logger,
 		store:            m.store,
 		path:             m.path,

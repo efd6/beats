@@ -249,7 +249,13 @@ func requestTrace(ctx context.Context, cli *http.Client, cfg conf, log *logp.Log
 	traceLogger := zap.New(core)
 
 	maxBodyLen := cfg.Tracer.MaxSize * 1e6 / 10 // 10% of file max
-	cli.Transport = httplog.NewLoggingRoundTripper(cli.Transport, traceLogger, maxBodyLen, []string{"Authorization"}, log)
+	trace := httplog.NewLoggingRoundTripper(cli.Transport, traceLogger, maxBodyLen, []string{"Authorization"}, log)
+	secrets := []string{cfg.OktaToken}
+	if cfg.OAuth2 != nil {
+		secrets = append(secrets, cfg.OAuth2.ClientSecret)
+	}
+	trace.SetSecrets(secrets...)
+	cli.Transport = trace
 	return cli
 }
 

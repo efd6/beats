@@ -38,6 +38,7 @@ func minimalProvider(cfg *config.C, log *logp.Logger) (provider.MinimalState, er
 		IncrementalSync: mc.provider.UpdateInterval,
 		Client:          client,
 		Tracer:          mc.tracer,
+		Secrets:         []string{mc.provider.Password},
 	}, nil
 }
 

@@ -1013,6 +1013,8 @@ Enabling this option compromises security and should only be used for debugging.
 ::::{include} /reference/_snippets/filebeat-request-tracer-masking.md
 ::::
 
+{applies_to}`stack: ga 9.7.0` The tracer also masks, in headers, URLs, and form and JSON bodies, the value of the `jamf_password` setting, if it is at least eight characters long.
+
 
 ### `tracer.filename` [_tracer_filename_2]
 
@@ -1525,6 +1527,8 @@ Enabling this option compromises security and should only be used for debugging.
 
 ::::{include} /reference/_snippets/filebeat-request-tracer-masking.md
 ::::
+
+{applies_to}`stack: ga 9.7.0` The tracer also masks, in headers, URLs, and form and JSON bodies, the values of the `okta_token` and `oauth2.client.secret` settings, if they are at least eight characters long.
 
 
 #### `tracer.filename` [_tracer_filename_3]

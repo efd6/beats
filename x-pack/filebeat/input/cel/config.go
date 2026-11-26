@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -130,6 +131,48 @@ type redact struct {
 	// Delete indicates that fields should be completely deleted
 	// before logging rather than redaction with a "*".
 	Delete bool `config:"delete"`
+}
+
+// stateSecrets returns the string values of the secret state and of the fields
+// of the initial state that the redact settings name, so that the request
+// tracer can mask them. Values that the program fetches while it runs are not
+// known here.
+func (c config) stateSecrets() []string {
+	s := appendStrings(nil, c.SecretState.m)
+	if c.Redact == nil {
+		return s
+	}
+	for _, f := range c.Redact.Fields {
+		var v any = c.State
+		for name := range strings.SplitSeq(f, ".") {
+			m, ok := v.(map[string]any)
+			if !ok {
+				v = nil
+				break
+			}
+			v = m[name]
+		}
+		s = appendStrings(s, v)
+	}
+	return s
+}
+
+// appendStrings appends to s the strings in v, descending into maps and
+// slices.
+func appendStrings(s []string, v any) []string {
+	switch v := v.(type) {
+	case string:
+		s = append(s, v)
+	case map[string]any:
+		for _, e := range v {
+			s = appendStrings(s, e)
+		}
+	case []any:
+		for _, e := range v {
+			s = appendStrings(s, e)
+		}
+	}
+	return s
 }
 
 // dumpConfig configures the CEL program to retain

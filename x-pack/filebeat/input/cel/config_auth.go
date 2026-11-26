@@ -70,6 +70,28 @@ func (c authConfig) Validate() error {
 	return nil
 }
 
+// secrets returns the secret values in the authentication configuration, so
+// that the request tracer can mask them.
+func (c authConfig) secrets() []string {
+	var s []string
+	if c.Basic != nil {
+		s = append(s, c.Basic.Password)
+	}
+	if c.Token != nil {
+		s = append(s, c.Token.Value)
+	}
+	if c.Digest != nil {
+		s = append(s, c.Digest.Password)
+	}
+	if c.OAuth2 != nil {
+		s = append(s, maybeString(c.OAuth2.ClientSecret), c.OAuth2.Password)
+	}
+	if c.AWS != nil {
+		s = append(s, c.AWS.SecretAccessKey, c.AWS.SessionToken)
+	}
+	return s
+}
+
 type basicAuthConfig struct {
 	Enabled  *bool  `config:"enabled"`
 	User     string `config:"user"`

@@ -175,7 +175,7 @@ func TestMaskerURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse test URL: %v", err)
 			}
-			original, query := maskURL(u)
+			original, query := newMasker(nil).url(u)
 			if test.wantOriginal != "" && original != test.wantOriginal {
 				t.Errorf("unexpected original URL: got:%q want:%q", original, test.wantOriginal)
 			}
@@ -371,9 +371,9 @@ var maskBodyTests = []struct {
 func TestMaskBody(t *testing.T) {
 	for _, test := range maskBodyTests {
 		t.Run(test.name, func(t *testing.T) {
-			got := string(maskBody(test.contentType, []byte(test.body)))
+			got := string(newMasker(nil).body(test.contentType, []byte(test.body)))
 			if got != test.want {
-				t.Errorf("maskBody(%q, %q) = %q; want %q", test.contentType, test.body, got, test.want)
+				t.Errorf("body(%q, %q) = %q; want %q", test.contentType, test.body, got, test.want)
 			}
 		})
 	}
@@ -641,5 +641,212 @@ func TestLogRequestTruncationIsAboutTheMaskedBody(t *testing.T) {
 	}
 	if !strings.Contains(out, `{\"client_secret\":\"REDACTED\"}`) {
 		t.Errorf("trace must contain the masked body:\n%s", out)
+	}
+}
+
+// A secret that, as written, differs from its URL query escaping.
+const (
+	plainSecret   = "FAKE-CRED-value-1234" //nolint:gosec // fake credential in a test
+	escapedSecret = "FAKE cred+value"      //nolint:gosec // fake credential in a test
+	queryEscaped  = "FAKE+cred%2Bvalue"    //nolint:gosec // fake credential in a test
+	shortSecret   = "short"
+)
+
+func secretMasker(secrets ...string) masker {
+	m := newMasker(nil)
+	m.secrets = newSecretSet(secrets)
+	return m
+}
+
+var maskBodySecretsTests = []struct {
+	name        string
+	secrets     []string
+	contentType string
+	body        string
+	want        string
+}{
+	{
+		name:        "json_unlisted_field",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `{"note":"see ` + plainSecret + ` here"}`,
+		want:        `{"note":"see REDACTED here"}`,
+	},
+	{
+		name:        "json_listed_field",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `{"password":"` + plainSecret + `"}`,
+		want:        `{"password":"REDACTED"}`,
+	},
+	{
+		name:        "form_unlisted_field",
+		secrets:     []string{plainSecret},
+		contentType: formType,
+		body:        "note=" + plainSecret + "&a=b",
+		want:        "a=b&note=REDACTED",
+	},
+	{
+		name:        "plain_text",
+		secrets:     []string{plainSecret},
+		contentType: "text/plain",
+		body:        "error for " + plainSecret,
+		want:        "error for REDACTED",
+	},
+	{
+		name:        "plain_text_url_escaped",
+		secrets:     []string{escapedSecret},
+		contentType: "text/plain",
+		body:        "x=" + queryEscaped,
+		want:        "x=REDACTED",
+	},
+	{
+		name:        "unparseable_json_secret_only",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `{"note":"` + plainSecret + `"`,
+		want:        `{"note":"REDACTED"`,
+	},
+	{
+		name:        "unparseable_json_listed_name_and_secret",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `{"access_token":"` + plainSecret + `"`,
+		want:        unparsedBody,
+	},
+	{
+		name:        "json_bare_string_body",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `"` + plainSecret + `"`,
+		want:        `"REDACTED"`,
+	},
+	{
+		name:        "json_secret_as_key",
+		secrets:     []string{plainSecret},
+		contentType: jsonType,
+		body:        `{"` + plainSecret + `":"x"}`,
+		want:        `{"REDACTED":"x"}`,
+	},
+	{
+		name:        "form_secret_as_key",
+		secrets:     []string{plainSecret},
+		contentType: formType,
+		body:        plainSecret + "=x",
+		want:        "REDACTED=x",
+	},
+	{
+		name:        "json_escaped_secret",
+		secrets:     []string{`p&ss<word>"x\y`},
+		contentType: jsonType,
+		body:        `{"note":"p\u0026ss\u003cword\u003e\"x\\y"}`,
+		want:        `{"note":"REDACTED"}`,
+	},
+	{
+		name:        "multibyte_secret_counts_characters",
+		secrets:     []string{"ééé"},
+		contentType: "text/plain",
+		body:        "ééé",
+		want:        "ééé",
+	},
+	{
+		name:        "short_secret_ignored",
+		secrets:     []string{shortSecret},
+		contentType: "text/plain",
+		body:        "a " + shortSecret + " body",
+		want:        "a " + shortSecret + " body",
+	},
+	{
+		name:        "longest_secret_first",
+		secrets:     []string{plainSecret, plainSecret + "-extended"},
+		contentType: "text/plain",
+		body:        plainSecret + "-extended and " + plainSecret,
+		want:        "REDACTED and REDACTED",
+	},
+}
+
+func TestMaskerBodySecrets(t *testing.T) {
+	for _, test := range maskBodySecretsTests {
+		t.Run(test.name, func(t *testing.T) {
+			got := string(secretMasker(test.secrets...).body(test.contentType, []byte(test.body)))
+			if got != test.want {
+				t.Errorf("body(%q, %q) = %q; want %q", test.contentType, test.body, got, test.want)
+			}
+		})
+	}
+}
+
+func TestMaskerSecretsInHeadersAndURLs(t *testing.T) {
+	m := secretMasker(plainSecret)
+
+	h := m.header(http.Header{
+		"X-Custom": {"prefix-" + plainSecret + "-suffix"},
+		"Accept":   {"*/*"},
+	})
+	want := http.Header{"X-Custom": {"prefix-REDACTED-suffix"}, "Accept": {"*/*"}}
+	if !cmp.Equal(want, h) {
+		t.Errorf("unexpected header:\n--- want:\n+++ got:\n%s", cmp.Diff(want, h))
+	}
+
+	u, err := url.Parse("https://example.com/" + plainSecret + "/path?note=" + plainSecret + "&limit=5")
+	if err != nil {
+		t.Fatalf("failed to parse test URL: %v", err)
+	}
+	original, query := m.url(u)
+	if wantOriginal := "https://example.com/REDACTED/path?limit=5&note=REDACTED"; original != wantOriginal {
+		t.Errorf("unexpected original URL: got:%q want:%q", original, wantOriginal)
+	}
+	if wantQuery := "limit=5&note=REDACTED"; query != wantQuery {
+		t.Errorf("unexpected query: got:%q want:%q", query, wantQuery)
+	}
+
+	// A secret with a slash and a space is escaped in a path as the URL
+	// writes it, which differs from the escaping of a path segment.
+	slashed := secretMasker("FAKE/cred value1")
+	u, err = url.Parse("https://example.com/api/FAKE/cred%20value1/x")
+	if err != nil {
+		t.Fatalf("failed to parse test URL: %v", err)
+	}
+	original, _ = slashed.url(u)
+	if wantOriginal := "https://example.com/api/REDACTED/x"; original != wantOriginal {
+		t.Errorf("unexpected original URL for a path with a slash: got:%q want:%q", original, wantOriginal)
+	}
+
+	// A secret with a space is escaped differently in a path and in a query.
+	spaced := secretMasker(escapedSecret)
+	u, err = url.Parse("https://example.com/" + url.PathEscape(escapedSecret) + "/path")
+	if err != nil {
+		t.Fatalf("failed to parse test URL: %v", err)
+	}
+	original, _ = spaced.url(u)
+	if wantOriginal := "https://example.com/REDACTED/path"; original != wantOriginal {
+		t.Errorf("unexpected original URL for a path-escaped secret: got:%q want:%q", original, wantOriginal)
+	}
+}
+
+func TestLoggingRoundTripperSetSecrets(t *testing.T) {
+	next := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return response(http.StatusBadRequest, jsonType, `{"error":"bad value `+plainSecret+`"}`, nil), nil
+	})
+	rt, buf := newTestTracer(t, 1<<20, next)
+	rt.SetSecrets(plainSecret, shortSecret)
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/api/"+plainSecret+"?note="+plainSecret, nil)
+	req.Header.Set("User-Agent", "agent "+plainSecret)
+	req.Header.Set("X-Custom", plainSecret)
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("unexpected error from RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+
+	out := buf.String()
+	if strings.Contains(out, plainSecret) {
+		t.Errorf("trace must not contain the secret:\n%s", out)
+	}
+	for _, s := range []string{"bad value REDACTED", "note=REDACTED", "agent REDACTED", `"url.path":"/api/REDACTED"`} {
+		if !strings.Contains(out, s) {
+			t.Errorf("trace must contain %q:\n%s", s, out)
+		}
 	}
 }

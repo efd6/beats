@@ -38,6 +38,10 @@ type MinimalState struct {
 	// Untraced holds URL prefixes of requests that are never traced,
 	// because their bodies carry credentials.
 	Untraced []string
+
+	// Secrets holds secret values, such as passwords and tokens, that the
+	// request tracer masks wherever they appear in a trace.
+	Secrets []string
 }
 
 var (

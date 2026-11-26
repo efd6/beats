@@ -107,3 +107,19 @@ func TestMinimalConfigRoundTrip(t *testing.T) {
 		t.Errorf("tracer = %+v; want filename ../../logs/jamf/http-request-trace-*.ndjson", mc.tracer)
 	}
 }
+
+func TestMinimalProviderSecrets(t *testing.T) {
+	cfg := config.MustNewConfigFrom(map[string]any{ //nolint:gosec // fake credential in a test
+		"jamf_tenant":   "tenant.jamfcloud.com",
+		"jamf_username": "user",
+		"jamf_password": "fake-jamf-password-1234",
+	})
+	ms, err := minimalProvider(cfg, logptest.NewTestingLogger(t, ""))
+	if err != nil {
+		t.Fatalf("unexpected error from minimalProvider: %v", err)
+	}
+	want := []string{"fake-jamf-password-1234"}
+	if !reflect.DeepEqual(ms.Secrets, want) {
+		t.Errorf("Secrets = %q; want %q", ms.Secrets, want)
+	}
+}

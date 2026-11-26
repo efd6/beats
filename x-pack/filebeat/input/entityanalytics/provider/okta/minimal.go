@@ -52,12 +52,17 @@ func minimalProvider(cfg *config.C, log *logp.Logger) (provider.MinimalState, er
 	if err != nil {
 		return provider.MinimalState{}, fmt.Errorf("creating HTTP client: %w", err)
 	}
+	secrets := []string{mc.provider.Token}
+	if mc.provider.OAuth2 != nil {
+		secrets = append(secrets, mc.provider.OAuth2.ClientSecret)
+	}
 	return provider.MinimalState{
 		Provider:        ecokta.NewWithClient(mc.provider, client),
 		FullSync:        mc.provider.SyncInterval,
 		IncrementalSync: mc.provider.UpdateInterval,
 		Client:          client,
 		Tracer:          mc.tracer,
+		Secrets:         secrets,
 	}, nil
 }
 

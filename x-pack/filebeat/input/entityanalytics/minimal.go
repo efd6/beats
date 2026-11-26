@@ -45,6 +45,7 @@ type minimalStateInput struct {
 	transport http.RoundTripper
 	tracer    *provider.TracerConfig
 	untraced  []string
+	secrets   []string
 
 	logger *logp.Logger
 	store  statestore.States
@@ -75,7 +76,7 @@ func (n *minimalStateInput) Run(runCtx v2.Context, connector beat.PipelineConnec
 	if n.client != nil {
 		ctx := ctxtool.FromCanceller(runCtx.Cancelation)
 		var traced http.RoundTripper
-		traced, err = provider.TraceRequests(ctx, n.transport, n.tracer, runCtx.Agent.Paths, n.providerName, runCtx.IDWithoutName, log)
+		traced, err = provider.TraceRequests(ctx, n.transport, n.tracer, runCtx.Agent.Paths, n.providerName, runCtx.IDWithoutName, log, n.secrets...)
 		if err != nil {
 			return fmt.Errorf("could not set up request tracer: %w", err)
 		}

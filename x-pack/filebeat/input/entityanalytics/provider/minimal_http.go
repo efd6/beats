@@ -59,8 +59,9 @@ func (c *TracerConfig) enabled() bool {
 // enables it, and next otherwise. The trace file name is resolved within
 // the logs directory for input, with any * replaced by id. If cfg names a
 // file but is disabled, existing trace files for that name are removed.
-// The trace file is closed when ctx is done. cfg is not modified.
-func TraceRequests(ctx context.Context, next http.RoundTripper, cfg *TracerConfig, p *paths.Path, input, id string, log *logp.Logger) (http.RoundTripper, error) {
+// The trace file is closed when ctx is done. cfg is not modified. The values
+// in secrets are masked wherever they appear in a trace.
+func TraceRequests(ctx context.Context, next http.RoundTripper, cfg *TracerConfig, p *paths.Path, input, id string, log *logp.Logger, secrets ...string) (http.RoundTripper, error) {
 	if cfg == nil || cfg.Filename == "" {
 		return next, nil
 	}
@@ -94,7 +95,9 @@ func TraceRequests(ctx context.Context, next http.RoundTripper, cfg *TracerConfi
 		zap.DebugLevel,
 	)
 	maxBodyLen := max(1, cfg.MaxSize) * 1e6 / 10 // 10% of file max
-	return httplog.NewLoggingRoundTripper(next, zap.New(core), maxBodyLen, []string{"Authorization"}, log), nil
+	rt := httplog.NewLoggingRoundTripper(next, zap.New(core), maxBodyLen, []string{"Authorization"}, log)
+	rt.SetSecrets(secrets...)
+	return rt, nil
 }
 
 // SkipTracing returns a RoundTripper that sends requests under one of

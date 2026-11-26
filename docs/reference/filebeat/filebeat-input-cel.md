@@ -1365,6 +1365,8 @@ Enabling this option compromises security and should only be used for debugging.
 ::::{include} /reference/_snippets/filebeat-request-tracer-masking.md
 ::::
 
+{applies_to}`stack: ga 9.7.0` The tracer also masks, in headers, URLs, and form and JSON bodies, the values of the `auth.basic.password`, `auth.token.value`, `auth.digest.password`, `auth.oauth2.client.secret`, `auth.oauth2.password`, `auth.aws.secret_access_key` and `auth.aws.session_token` settings, the values in `secret_state`, and the values of the fields in the initial `state` that `redact.fields` names, if they are at least eight characters long. It does not know values that the program fetches while it runs.
+
 
 ### `resource.tracer.filename` [_resource_tracer_filename]
 

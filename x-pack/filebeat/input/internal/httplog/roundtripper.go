@@ -182,6 +182,15 @@ type LoggingRoundTripper struct {
 	log         *logp.Logger
 }
 
+// SetSecrets sets secret values, such as a client secret or a password, that
+// are masked wherever they appear in the headers, URLs and bodies that rt logs.
+// Values shorter than eight characters are ignored, since masking them could
+// hide unrelated text. A secret is also masked as it is escaped in a URL.
+// SetSecrets must be called before rt is used.
+func (rt *LoggingRoundTripper) SetSecrets(secrets ...string) {
+	rt.mask.secrets = newSecretSet(secrets)
+}
+
 // RoundTrip implements the http.RoundTripper interface, logging
 // the request and response to the underlying logger.
 //
@@ -258,7 +267,7 @@ func (rt *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	if err != nil {
 		errorsMessages = append(errorsMessages, fmt.Sprintf("failed to read response body: %s", err))
 	}
-	logged := maskBody(resp.Header.Get("Content-Type"), body)
+	logged := rt.mask.body(resp.Header.Get("Content-Type"), body)
 	respParts = append(respParts,
 		zap.ByteString("http.response.body.content", logged[:min(len(logged), rt.maxBodyLen)]),
 		zap.Bool("http.response.body.truncated", rt.maxBodyLen < len(logged)),
@@ -307,17 +316,17 @@ func LogRequest(log *zap.Logger, req *http.Request, sensitive []string, maxBodyL
 }
 
 func logRequest(log *zap.Logger, req *http.Request, maxBodyLen int, mask masker, extra ...zapcore.Field) (_ *http.Request, parts []zapcore.Field, errorsMessages []string) {
-	original, query := maskURL(req.URL)
+	original, query := mask.url(req.URL)
 	reqParts := append([]zapcore.Field{
 		zap.String("url.original", original),
 		zap.String("url.scheme", req.URL.Scheme),
-		zap.String("url.path", req.URL.Path),
+		zap.String("url.path", mask.secrets.mask(req.URL.Path)),
 		zap.String("url.domain", req.URL.Hostname()),
 		zap.String("url.port", req.URL.Port()),
 		zap.String("url.query", query),
 		zap.String("http.request.method", req.Method),
 		zap.Any("http.request.header", mask.header(req.Header)),
-		zap.String("user_agent.original", req.Header.Get("User-Agent")),
+		zap.String("user_agent.original", mask.secrets.mask(req.Header.Get("User-Agent"))),
 	}, extra...)
 
 	var (
@@ -328,7 +337,7 @@ func logRequest(log *zap.Logger, req *http.Request, maxBodyLen int, mask masker,
 	if err != nil {
 		errorsMessages = append(errorsMessages, fmt.Sprintf("failed to read request body: %s", err))
 	}
-	logged := maskBody(req.Header.Get("Content-Type"), body)
+	logged := mask.body(req.Header.Get("Content-Type"), body)
 	reqParts = append(reqParts,
 		zap.ByteString("http.request.body.content", logged[:min(len(logged), maxBodyLen)]),
 		zap.Bool("http.request.body.truncated", maxBodyLen < len(logged)),
